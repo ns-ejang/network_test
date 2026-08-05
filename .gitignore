@@ -10,7 +10,3 @@ eenv/
 
 # macOS
 .DS_Store
-
-# Local CSV data (use .env.example as reference)
-extract_urllist_fromCCI/genai_urls.csv
-extract_urllist_fromCCI_jp/genai_urls.csv

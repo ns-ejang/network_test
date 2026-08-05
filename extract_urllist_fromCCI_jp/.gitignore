@@ -1,5 +1,4 @@
 .env
-genai_urls.csv
 __pycache__/
 *.pyc
 .venv/
