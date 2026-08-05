@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Test Controller</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface-hover: #243044;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --log-bg: #0a0e14;
+      --font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SF Mono", "Fira Code", "Consolas", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #151c28 0%, var(--bg) 100%);
+      flex-shrink: 0;
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .header-text {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 0.25rem;
+    }
+
+    .run-guide {
+      flex: 0 1 360px;
+      min-width: 280px;
+    }
+
+    .run-guide-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .run-guide pre {
+      background: var(--log-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      line-height: 1.55;
+      color: #a8b8cc;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .server-control {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .server-control-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-right: 0.25rem;
+    }
+
+    .server-status-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+    }
+
+    .server-status-running {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+
+    .server-status-stopped {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .btn-server {
+      background: var(--surface-hover);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-server:hover:not(:disabled) {
+      background: #2d3a4f;
+    }
+
+    .server-banner {
+      margin: 0 2rem;
+      padding: 0.75rem 1rem;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 8px;
+      color: #fcd34d;
+      font-size: 0.85rem;
+      display: none;
+      flex-shrink: 0;
+    }
+
+    .server-banner.visible {
+      display: block;
+    }
+
+    .grid.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    .stats-bar {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .stats-bar h2 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .stat-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+    }
+
+    .stat-card.total {
+      border-color: rgba(59, 130, 246, 0.4);
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stat-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      letter-spacing: -0.02em;
+    }
+
+    .stat-sub {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+      font-family: var(--mono);
+    }
+
+    .stat-sub span {
+      color: #7dd3fc;
+    }
+
+    .stat-card.running .stat-value {
+      color: var(--success);
+    }
+
+    main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 2rem 1.5rem;
+    }
+
+    .grid {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .card-header {
+      padding: 1rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .card-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .card-meta {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      margin-top: 0.2rem;
+    }
+
+    .status-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .status-idle { background: #334155; color: #cbd5e1; }
+    .status-running { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+    .status-stopping { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+    .card-actions {
+      padding: 0.75rem 1.1rem;
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 500;
+      border: none;
+      border-radius: 8px;
+      padding: 0.45rem 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-start {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-start:hover:not(:disabled) { background: #2563eb; }
+
+    .btn-stop {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+
+    .btn-stop:hover:not(:disabled) { background: rgba(239, 68, 68, 0.25); }
+
+    .btn-clear {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      margin-left: auto;
+    }
+
+    .btn-clear:hover:not(:disabled) { background: var(--surface-hover); }
+
+    .log-panel {
+      flex: 1;
+      min-height: 0;
+      background: var(--log-bg);
+      padding: 0.75rem;
+      overflow: auto;
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      line-height: 1.45;
+    }
+
+    .log-line {
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #a8b8cc;
+    }
+
+    .log-line.access { color: #7dd3fc; }
+    .log-line.response-ok { color: #86efac; }
+    .log-line.response-warn { color: #fde047; }
+    .log-line.system { color: #94a3b8; font-style: italic; }
+    .log-line.error { color: #fca5a5; }
+
+    .empty-log {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    @media (min-width: 1400px) {
+      .grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      header, main, .stats-bar, .server-banner { padding-left: 1rem; padding-right: 1rem; }
+      .server-banner { margin-left: 1rem; margin-right: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="header-text">
+        <h1>Network Test Controller</h1>
+        <p>4개 테스트 스크립트 실행 · 중지 · 실시간 로그 확인</p>
+      </div>
+      <div class="run-guide">
+        <div class="run-guide-label">실행 방법</div>
+        <pre>cd controller
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python run.py</pre>
+      </div>
+    </div>
+    <div class="server-control">
+      <span class="server-control-label">app.py</span>
+      <span class="server-status-badge server-status-stopped" id="server-status-badge">stopped</span>
+      <button class="btn-server" id="server-start" data-server-action="start">시작</button>
+      <button class="btn-server" id="server-stop" data-server-action="stop">중지</button>
+      <button class="btn-server" id="server-restart" data-server-action="restart">재시작</button>
+    </div>
+  </header>
+
+  <div class="server-banner" id="server-banner">
+    app.py가 중지되어 있습니다. 테스트 스크립트를 사용하려면 <strong>시작</strong> 버튼을 눌러주세요.
+  </div>
+
+  <section class="stats-bar">
+    <h2>트래픽 통계 (MB)</h2>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card total">
+        <div class="stat-label">전체 합계</div>
+        <div class="stat-value" id="stat-total-mb">0.000</div>
+        <div class="stat-sub">최근 1분: <span id="stat-total-minute">0.000</span> MB</div>
+      </div>
+    </div>
+  </section>
+
+  <main>
+    <div class="grid" id="script-grid"></div>
+  </main>
+
+  <script>
+    const state = {};
+    const traffic = {};
+    let serverState = { running: true, mode: "direct" };
+
+    function updateServerUI() {
+      const running = serverState.running;
+      const badge = document.getElementById("server-status-badge");
+      const banner = document.getElementById("server-banner");
+      const grid = document.getElementById("script-grid");
+      const startBtn = document.getElementById("server-start");
+      const stopBtn = document.getElementById("server-stop");
+      const restartBtn = document.getElementById("server-restart");
+
+      badge.textContent = running ? "running" : "stopped";
+      badge.className = `server-status-badge ${running ? "server-status-running" : "server-status-stopped"}`;
+
+      startBtn.style.display = running ? "none" : "inline-block";
+      stopBtn.disabled = !running;
+      restartBtn.disabled = !running;
+
+      if (serverState.mode === "direct") {
+        startBtn.style.display = "none";
+      }
+
+      if (serverState.mode === "supervisor" && !running) {
+        banner.classList.add("visible");
+        grid.classList.add("disabled");
+      } else {
+        banner.classList.remove("visible");
+        grid.classList.remove("disabled");
+      }
+    }
+
+    async function fetchServerStatus() {
+      try {
+        const res = await fetch("/api/server/status");
+        if (!res.ok) return;
+        serverState = await res.json();
+        updateServerUI();
+      } catch (_) {}
+    }
+
+    async function handleServerAction(action) {
+      const btn = document.querySelector(`[data-server-action="${action}"]`);
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch(`/api/server/${action}`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          alert(data.message || data.error || "요청 실패");
+        }
+        if (action === "restart") {
+          setTimeout(() => window.location.reload(), 800);
+          return;
+        }
+        serverState.running = data.running;
+        updateServerUI();
+        if (action === "start") {
+          fetchScripts();
+          fetchTraffic();
+        }
+        if (action === "stop") {
+          for (const id of Object.keys(state)) {
+            if (state[id]?.source) {
+              state[id].source.close();
+              delete state[id].source;
+            }
+          }
+        }
+      } finally {
+        await fetchServerStatus();
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    document.querySelector(".server-control").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-server-action]");
+      if (!btn || btn.disabled) return;
+      handleServerAction(btn.dataset.serverAction);
+    });
+
+    function formatMb(value) {
+      return Number(value || 0).toFixed(3);
+    }
+
+    function renderStats(data) {
+      const grid = document.getElementById("stats-grid");
+      const cards = data.scripts.map(s => {
+        traffic[s.id] = { total_mb: s.total_mb, minute_mb: s.minute_mb };
+        const running = s.status === "running" ? " running" : "";
+        return `
+          <div class="stat-card${running}" data-stat-id="${s.id}">
+            <div class="stat-label">${s.label}</div>
+            <div class="stat-value">${formatMb(s.total_mb)}</div>
+            <div class="stat-sub">최근 1분: <span>${formatMb(s.minute_mb)}</span> MB</div>
+          </div>
+        `;
+      }).join("");
+
+      grid.innerHTML = `
+        <div class="stat-card total">
+          <div class="stat-label">전체 합계</div>
+          <div class="stat-value" id="stat-total-mb">${formatMb(data.total_mb)}</div>
+          <div class="stat-sub">최근 1분: <span id="stat-total-minute">${formatMb(data.minute_mb)}</span> MB</div>
+        </div>
+        ${cards}
+      `;
+    }
+
+    function updateStatCard(scriptId, totalMb, minuteMb) {
+      traffic[scriptId] = { total_mb: totalMb, minute_mb: minuteMb };
+      const card = document.querySelector(`.stat-card[data-stat-id="${scriptId}"]`);
+      if (card) {
+        card.querySelector(".stat-value").textContent = formatMb(totalMb);
+        card.querySelector(".stat-sub span").textContent = formatMb(minuteMb);
+      }
+      refreshTotalStats();
+    }
+
+    function refreshTotalStats() {
+      let totalMb = 0;
+      let minuteMb = 0;
+      for (const id of Object.keys(traffic)) {
+        totalMb += traffic[id].total_mb || 0;
+        minuteMb += traffic[id].minute_mb || 0;
+      }
+      const totalEl = document.getElementById("stat-total-mb");
+      const minuteEl = document.getElementById("stat-total-minute");
+      if (totalEl) totalEl.textContent = formatMb(totalMb);
+      if (minuteEl) minuteEl.textContent = formatMb(minuteMb);
+    }
+
+    async function fetchTraffic() {
+      try {
+        const res = await fetch("/api/traffic");
+        const data = await res.json();
+        renderStats(data);
+      } catch (_) {}
+    }
+
+    function classifyLog(line) {
+      if (line.startsWith("[ACCESS]")) {
+        if (/ --- 2\d\d( |$)/.test(line)) return "response-ok";
+        if (/ --- (000|[45]\d\d)/.test(line)) return "error";
+        if (/ --- 3\d\d/.test(line)) return "response-warn";
+        return "access";
+      }
+      if (line.startsWith("[SSH-") || line.startsWith("[ROUTER]") || line.startsWith("[VNC-") || line.startsWith("[UPLOAD-")) {
+        return "access";
+      }
+      if (line.startsWith("---")) return "system";
+      if (/error|failed|closed/i.test(line)) return "error";
+      return "";
+    }
+
+    function renderCard(script) {
+      const status = state[script.id]?.status || script.status;
+      const logs = state[script.id]?.logs || [];
+
+      return `
+        <article class="card" data-id="${script.id}">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${script.label}</div>
+              <div class="card-meta">${script.folder}/${script.script}</div>
+            </div>
+            <span class="status-badge status-${status}">${status}</span>
+          </div>
+          <div class="card-actions">
+            <button class="btn-start" data-action="start" ${status === "running" || status === "stopping" ? "disabled" : ""}>실행</button>
+            <button class="btn-stop" data-action="stop" ${status === "idle" ? "disabled" : ""}>중지</button>
+            <button class="btn-clear" data-action="clear">로그 지우기</button>
+          </div>
+          <div class="log-panel" id="log-${script.id}">
+            ${logs.length === 0
+              ? '<div class="empty-log">로그가 없습니다. 실행 버튼을 눌러 시작하세요.</div>'
+              : logs.map(line => `<div class="log-line ${classifyLog(line)}">${escapeHtml(line)}</div>`).join("")}
+          </div>
+        </article>
+      `;
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function renderAll(scripts) {
+      const grid = document.getElementById("script-grid");
+      grid.innerHTML = scripts.map(s => renderCard(s)).join("");
+    }
+
+    function appendLog(scriptId, line) {
+      if (!state[scriptId]) state[scriptId] = { logs: [], status: "idle" };
+      state[scriptId].logs.push(line);
+
+      const panel = document.getElementById(`log-${scriptId}`);
+      if (!panel) return;
+
+      const empty = panel.querySelector(".empty-log");
+      if (empty) empty.remove();
+
+      const div = document.createElement("div");
+      div.className = `log-line ${classifyLog(line)}`;
+      div.textContent = line;
+      panel.appendChild(div);
+      panel.scrollTop = panel.scrollHeight;
+    }
+
+    function setStatus(scriptId, status) {
+      if (!state[scriptId]) state[scriptId] = { logs: [], status };
+      state[scriptId].status = status;
+
+      const card = document.querySelector(`.card[data-id="${scriptId}"]`);
+      if (!card) return;
+
+      const badge = card.querySelector(".status-badge");
+      badge.className = `status-badge status-${status}`;
+      badge.textContent = status;
+
+      const startBtn = card.querySelector('[data-action="start"]');
+      const stopBtn = card.querySelector('[data-action="stop"]');
+      startBtn.disabled = status === "running" || status === "stopping";
+      stopBtn.disabled = status === "idle";
+    }
+
+    function connectStream(scriptId) {
+      if (state[scriptId]?.source) {
+        state[scriptId].source.close();
+      }
+
+      const source = new EventSource(`/api/scripts/${scriptId}/stream`);
+      state[scriptId] = state[scriptId] || { logs: [], status: "idle" };
+      state[scriptId].source = source;
+
+      source.onmessage = (event) => {
+        appendLog(scriptId, event.data);
+      };
+
+      source.addEventListener("status", (event) => {
+        setStatus(scriptId, event.data);
+      });
+
+      source.addEventListener("traffic", (event) => {
+        const [totalMb, minuteMb] = event.data.split(",").map(Number);
+        updateStatCard(scriptId, totalMb, minuteMb);
+      });
+
+      source.onerror = () => {
+        source.close();
+        delete state[scriptId]?.source;
+      };
+    }
+
+    async function fetchScripts() {
+      try {
+        const res = await fetch("/api/scripts");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const scripts = await res.json();
+
+        for (const script of scripts) {
+          state[script.id] = state[script.id] || { logs: [], status: script.status };
+
+          if (script.status === "running" && !state[script.id].source) {
+            const logRes = await fetch(`/api/scripts/${script.id}/logs`);
+            const logData = await logRes.json();
+            state[script.id].logs = logData.lines;
+            connectStream(script.id);
+          }
+        }
+
+        renderAll(scripts);
+
+        for (const script of scripts) {
+          if (script.status === "running") {
+            const panel = document.getElementById(`log-${script.id}`);
+            if (panel) panel.scrollTop = panel.scrollHeight;
+          }
+        }
+      } catch (err) {
+        const grid = document.getElementById("script-grid");
+        grid.innerHTML = `<div class="empty-log">스크립트 목록을 불러오지 못했습니다. 서버를 재시작해 주세요. (${err.message})</div>`;
+      }
+    }
+
+    document.getElementById("script-grid").addEventListener("click", async (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+
+      const card = btn.closest(".card");
+      const scriptId = card.dataset.id;
+      const action = btn.dataset.action;
+
+      if (action === "clear") {
+        state[scriptId].logs = [];
+        const panel = document.getElementById(`log-${scriptId}`);
+        panel.innerHTML = '<div class="empty-log">로그가 없습니다.</div>';
+        return;
+      }
+
+      btn.disabled = true;
+
+      try {
+        if (action === "start") {
+          const res = await fetch(`/api/scripts/${scriptId}/start`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || "실행 실패");
+            return;
+          }
+          state[scriptId].logs = [];
+          document.getElementById(`log-${scriptId}`).innerHTML = "";
+          setStatus(scriptId, "running");
+          connectStream(scriptId);
+        }
+
+        if (action === "stop") {
+          setStatus(scriptId, "stopping");
+          await fetch(`/api/scripts/${scriptId}/stop`, { method: "POST" });
+        }
+      } finally {
+        fetchScripts();
+      }
+    });
+
+    fetchServerStatus();
+    fetchScripts();
+    fetchTraffic();
+    setInterval(fetchServerStatus, 2000);
+    setInterval(fetchScripts, 5000);
+    setInterval(fetchTraffic, 1000);
+  </script>
+</body>
+</html>
