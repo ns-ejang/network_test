@@ -7,7 +7,11 @@ banners if they appear.
 
   python3 -m venv .venv && source .venv/bin/activate
   pip install -r requirements.txt
+  python -m playwright install chromium   # WSL/Linux; Chrome is used if installed
   python send_prompts.py --provider all --limit 3
+
+WSL: copy the repo to the Linux filesystem (~/network_test), not /mnt/c. Chrome
+profiles on /mnt/c often fail with "Failed to open a new tab".
   python send_prompts.py --lang ja --provider all --limit 3
   python send_prompts.py --provider chatgpt
   python send_prompts.py --lang ja --provider copilot --category jailbreak
@@ -416,15 +420,92 @@ def install_privacy_guard(context) -> set:
     return keep
 
 
+def running_on_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text(
+            encoding="utf-8", errors="ignore"
+        ).lower()
+    except OSError:
+        return False
+
+
+def resolve_profile_dir() -> Path:
+    path = PROFILE_DIR
+    if running_on_wsl() and path.resolve().as_posix().startswith("/mnt/"):
+        path = Path.home() / ".cache" / "ai_guardrails" / "browser_profile"
+        log(
+            f"WSL: using Linux Chrome profile {path} "
+            "(Windows-drive profiles often fail to open tabs)"
+        )
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def chrome_launch_args() -> list[str]:
+    args = ["--disable-blink-features=AutomationControlled"]
+    if running_on_wsl():
+        args.extend(
+            [
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
+        )
+    return args
+
+
+def acquire_page(context):
+    for page in list(context.pages):
+        try:
+            if not page.is_closed():
+                return page
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        return context.new_page()
+    except Exception as exc:
+        time.sleep(0.5)
+        for page in list(context.pages):
+            try:
+                if not page.is_closed():
+                    return page
+            except Exception:  # noqa: BLE001
+                continue
+        log(
+            "Could not open a browser tab. On WSL copy the project off /mnt/c "
+            "(e.g. ~/network_test) and retry."
+        )
+        raise exc
+
+
 def launch_chrome(playwright, headless: bool):
-    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    context = playwright.chromium.launch_persistent_context(
-        user_data_dir=str(PROFILE_DIR),
-        channel="chrome",
-        headless=headless,
-        viewport={"width": 1280, "height": 900},
-        args=["--disable-blink-features=AutomationControlled"],
-    )
+    profile = resolve_profile_dir()
+    kwargs = {
+        "user_data_dir": str(profile),
+        "headless": headless,
+        "viewport": {"width": 1280, "height": 900},
+        "args": chrome_launch_args(),
+    }
+    try:
+        context = playwright.chromium.launch_persistent_context(
+            channel="chrome", **kwargs
+        )
+        log("Browser: Google Chrome")
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "chrome" not in msg and "channel" not in msg:
+            raise
+        log("Google Chrome not found; falling back to Playwright Chromium.")
+        try:
+            context = playwright.chromium.launch_persistent_context(**kwargs)
+            log("Browser: Playwright Chromium")
+        except Exception as exc2:
+            log("Could not launch a browser.")
+            log("Install Chromium: python -m playwright install chromium")
+            log("Or install Google Chrome, then: python -m playwright install chrome")
+            raise exc2 from exc
     install_privacy_guard(context)
     return context
 
@@ -1040,14 +1121,16 @@ class WebClients:
         self.turns: dict[str, int] = {name: 0 for name in providers}
         self.pages: dict[str, object] = {}
         keep = getattr(context, "_guardrails_keep", set())
+        unused = []
         for page in list(context.pages):
             try:
-                page.close()
+                if not page.is_closed():
+                    unused.append(page)
             except Exception:  # noqa: BLE001
-                pass
+                continue
         for name in providers:
             site = SITES[name]
-            page = context.new_page()
+            page = unused.pop(0) if unused else acquire_page(context)
             keep.add(page)
             page.set_default_timeout(self.timeout_ms)
             page.set_default_navigation_timeout(90000)
@@ -1059,6 +1142,11 @@ class WebClients:
                 click_if_visible(page, list(site["guest"]), timeout_ms=2500)
             dismiss_common(page)
             close_privacy_windows_soon(context, keep)
+        for page in unused:
+            try:
+                page.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     def send(self, provider: str, prompt: str) -> dict:
         site = SITES[provider]
@@ -1111,14 +1199,14 @@ def cmd_setup(headless: bool) -> int:
         log("--setup needs a visible browser. Drop --headless.")
         return 1
     sync_playwright = require_playwright()
-    log(f"Opening Chrome profile: {PROFILE_DIR}")
+    log("Opening a persistent Chrome profile (Linux path on WSL if the repo is on /mnt/c).")
     log("If ChatGPT or DeepSeek will not send, log in in this window, then press Enter.")
     with sync_playwright() as playwright:
         context = launch_chrome(playwright, headless=False)
         keep = getattr(context, "_guardrails_keep", set())
         pages = []
         for url in (CHATGPT_URL, COPILOT_URL, DUCKAI_URL, DEEPSEEK_URL):
-            page = context.pages[0] if not pages and context.pages else context.new_page()
+            page = acquire_page(context) if not pages else context.new_page()
             keep.add(page)
             pages.append(page)
             safe_goto(page, url)
