@@ -10,6 +10,7 @@
 | `extract_urllist_fromCCI_jp` | `genai_test.sh` | GenAI URL 접속 테스트 (CCI JP) |
 | `malicious_sites` | `web_test.sh` | 악성 사이트 URL 접속 테스트 |
 | `npa` | `npa_test.sh` | NPA 네트워크 테스트 (SSH/VNC/Router) |
+| `ai_guardrails` | `send_prompts.py` | ChatGPT / Copilot / Duck.ai / DeepSeek에 한글·일본어 Guardrails 프롬프트 송신 (`--lang ja`) |
 | `controller` | `run.py`, `app.py` | 웹 UI 실행/중지/로그/트래픽 모니터링 |
 
 ## 웹 컨트롤러 실행

@@ -3,27 +3,40 @@
 # Ctrl+C 들어오면 모든 백그라운드 job 종료
 trap "echo 'Stopping...'; kill 0" SIGINT
 
+probe() {
+  local host=$1 port=$2 svc=$3
+  local result
+  if nc -z -w 3 "$host" "$port" >/dev/null 2>&1; then
+    result="succeeded!"
+  else
+    result="failed!"
+  fi
+  printf "Connection to %-28s  port %-5s  [tcp/%-5s]  %s\n" \
+    "$host" "$port" "$svc" "$result"
+}
+
 while true; do
-  echo "[SSH-22]" $(nc -z -w 3 192.168.0.168 22 && echo "open" || echo "closed")
+  probe 192.168.0.168 22 ssh
   sleep 5
 done &
 
 while true; do
-  echo "[ROUTER]"
-  bytes=$(curl -sk -o /dev/null -w '%{size_download}' https://192.168.0.1)
-  echo "[TRAFFIC] $bytes"
+  probe 192.168.0.1 443 https
   sleep 1
 done &
 
 while true; do
-  echo "[VNC-5900]" $(nc -z -w 3 192.168.0.133 5900 && echo "open" || echo "closed")
-  sleep 5
+  probe the-internet.herokuapp.com 443 https
+  sleep 1
 done &
 
 while true; do
-  echo "[UPLOAD-TEST]"
-  bytes=$(curl -sk -o /dev/null -w '%{size_download}' https://the-internet.herokuapp.com/upload)
-  echo "[TRAFFIC] $bytes"
+  probe pim.cyberlogitec.com 443 https
+  sleep 1
+done &
+
+while true; do
+  probe gitlab.cyberlogitec.com 443 https
   sleep 1
 done &
 

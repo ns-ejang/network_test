@@ -1,24 +1,19 @@
 #!/bin/bash
 
-CSV="genai_urls.csv"
+CSV="month.csv"
 
 trap "echo 'Stopping...'; kill 0" SIGINT
 
-# URL만 추출해서 배열에 저장 (zsh/bash 호환)
+# 3번째 칼럼이 url인 행만, 4번째 칼럼을 URL로 사용 (zsh 호환)
 URLS=()
-while IFS=',' read -r _ domain; do
-  domain="${domain//$'\r'/}"
-  [[ "$domain" == "domain" ]] && continue
-  [[ -z "$domain" ]] && continue
-  if [[ "$domain" != http://* && "$domain" != https://* ]]; then
-    domain="https://$domain"
-  fi
-  URLS+=("$domain")
+while IFS=',' read -r _ _ type url _; do
+  [[ "$type" == "url" ]] || continue
+  URLS+=("$url")
 done < "$CSV"
 
 while true; do
   for url in "${URLS[@]}"; do
-    read -r http_code bytes <<< "$(curl -sk -o /dev/null -w '%{http_code} %{size_download}' "$url")"
+    read -r http_code bytes <<< "$(curl --connect-timeout 5 -m 10 -sk -o /dev/null -w '%{http_code} %{size_download}' "$url")"
     case "$http_code" in
       200) phrase="OK" ;;
       201) phrase="Created" ;;
@@ -35,12 +30,11 @@ while true; do
       *) phrase="" ;;
     esac
     if [[ -n "$phrase" ]]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [ACCESS] $url   --- $http_code $phrase"
+      echo "[ACCESS] $url   --- $http_code $phrase"
     else
-      echo "$(date '+%Y-%m-%d %H:%M:%S') [ACCESS] $url   --- $http_code"
+      echo "[ACCESS] $url   --- $http_code"
     fi
     echo "[TRAFFIC] $bytes"
     sleep 1
   done
 done
-
