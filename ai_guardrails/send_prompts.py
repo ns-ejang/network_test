@@ -480,28 +480,97 @@ def chrome_launch_args() -> list[str]:
     return args
 
 
-def acquire_page(context):
+def _open_pages(context) -> list:
+    pages = []
     for page in list(context.pages):
         try:
             if not page.is_closed():
-                return page
+                pages.append(page)
         except Exception:  # noqa: BLE001
             continue
+    return pages
+
+
+def acquire_page(context):
+    existing = _open_pages(context)
+    if existing:
+        return existing[0]
     try:
         return context.new_page()
     except Exception as exc:
         time.sleep(0.5)
-        for page in list(context.pages):
-            try:
-                if not page.is_closed():
-                    return page
-            except Exception:  # noqa: BLE001
-                continue
+        existing = _open_pages(context)
+        if existing:
+            return existing[0]
         log(
             "Could not open a browser tab. On WSL copy the project off /mnt/c "
             "(e.g. ~/network_test) and retry."
         )
         raise exc
+
+
+def place_window(page, index: int) -> None:
+    try:
+        session = page.context.new_cdp_session(page)
+        window_id = session.send("Browser.getWindowForTarget")["windowId"]
+        session.send(
+            "Browser.setWindowBounds",
+            {
+                "windowId": window_id,
+                "bounds": {
+                    "left": 40 + index * 72,
+                    "top": 40 + index * 48,
+                    "width": 1280,
+                    "height": 900,
+                    "windowState": "normal",
+                },
+            },
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
+def open_browser_window(context, index: int = 0):
+    existing = _open_pages(context)
+    if not existing:
+        page = acquire_page(context)
+        place_window(page, index)
+        return page
+    opener = existing[0]
+    page = None
+    try:
+        with context.expect_page(timeout=10000) as pending:
+            session = context.new_cdp_session(opener)
+            session.send(
+                "Target.createTarget",
+                {
+                    "url": "about:blank",
+                    "newWindow": True,
+                    "width": 1280,
+                    "height": 900,
+                },
+            )
+        page = pending.value
+    except Exception as exc:
+        log(f"New window via CDP failed ({exc}); trying window.open")
+        try:
+            with context.expect_page(timeout=10000) as pending:
+                opener.evaluate(
+                    "window.open('about:blank', '_blank', 'popup=yes,width=1280,height=900')"
+                )
+            page = pending.value
+        except Exception as exc2:
+            log(f"window.open failed ({exc2}); falling back to a tab")
+            try:
+                page = context.new_page()
+            except Exception:
+                log(
+                    "Could not open a second Chrome window. "
+                    "ChatGPT and Copilot need separate windows; copy the repo off /mnt/c and retry."
+                )
+                raise
+    place_window(page, index)
+    return page
 
 
 def launch_chrome(playwright, headless: bool):
@@ -1145,17 +1214,15 @@ class WebClients:
         self.turns: dict[str, int] = {name: 0 for name in providers}
         self.pages: dict[str, object] = {}
         keep = getattr(context, "_guardrails_keep", set())
-        unused = []
-        for page in list(context.pages):
-            try:
-                if not page.is_closed():
-                    unused.append(page)
-            except Exception:  # noqa: BLE001
-                continue
-        for name in providers:
+        unused = _open_pages(context)
+        for index, name in enumerate(providers):
             site = SITES[name]
-            page = unused.pop(0) if unused else acquire_page(context)
+            if unused:
+                page = unused.pop(0)
+            else:
+                page = open_browser_window(context, index)
             keep.add(page)
+            place_window(page, index)
             page.set_default_timeout(self.timeout_ms)
             page.set_default_navigation_timeout(90000)
             self.pages[name] = page
@@ -1229,9 +1296,16 @@ def cmd_setup(headless: bool) -> int:
         context = launch_chrome(playwright, headless=False)
         keep = getattr(context, "_guardrails_keep", set())
         pages = []
-        for url in (CHATGPT_URL, COPILOT_URL, DUCKAI_URL, DEEPSEEK_URL):
-            page = acquire_page(context) if not pages else context.new_page()
+        for index, url in enumerate(
+            (CHATGPT_URL, COPILOT_URL, DUCKAI_URL, DEEPSEEK_URL)
+        ):
+            page = (
+                acquire_page(context)
+                if not pages
+                else open_browser_window(context, index)
+            )
             keep.add(page)
+            place_window(page, index)
             pages.append(page)
             safe_goto(page, url)
             if is_privacy_window(page.url or ""):
