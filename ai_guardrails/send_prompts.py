@@ -14,6 +14,7 @@ WSL: copy the repo to the Linux filesystem (~/network_test), not /mnt/c. Chrome
 profiles on /mnt/c often fail with "Failed to open a new tab".
   python send_prompts.py --lang ja --provider all --limit 3
   python send_prompts.py --provider chatgpt
+  python send_prompts.py --provider chatgpt,copilot --lang all
   python send_prompts.py --lang ja --provider copilot --category jailbreak
   python send_prompts.py --provider duckai --limit 5
   python send_prompts.py --provider deepseek --limit 3
@@ -229,13 +230,36 @@ def preview(text: str, limit: int = 180) -> str:
     return compact[: limit - 1] + "…"
 
 
+PROVIDER_ALIASES = ("chatgpt", "copilot", "duckai", "deepseek", "all", "both", "openai")
+
+
 def normalize_providers(provider: str, via: str) -> list[str]:
-    if provider in {"all", "both"}:
-        names = list(WEB_PROVIDERS)
-    elif provider == "openai":
-        names = ["chatgpt"]
-    else:
-        names = [provider]
+    tokens = [item.strip().lower() for item in (provider or "all").split(",") if item.strip()]
+    if not tokens:
+        tokens = ["all"]
+    names: list[str] = []
+    unknown: list[str] = []
+    for token in tokens:
+        if token not in PROVIDER_ALIASES:
+            unknown.append(token)
+            continue
+        if token in {"all", "both"}:
+            for name in WEB_PROVIDERS:
+                if name not in names:
+                    names.append(name)
+        elif token == "openai":
+            if "chatgpt" not in names:
+                names.append("chatgpt")
+        elif token not in names:
+            names.append(token)
+    if unknown:
+        log(
+            "Unknown provider: "
+            + ", ".join(unknown)
+            + ". Choose from: "
+            + ", ".join(PROVIDER_ALIASES)
+        )
+        raise SystemExit(2)
     if via == "api":
         if names != ["chatgpt"]:
             log("API mode only supports ChatGPT. Use --via web for Copilot/Duck.ai/DeepSeek.")
@@ -1359,9 +1383,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=("chatgpt", "copilot", "duckai", "deepseek", "all", "both", "openai"),
         default="all",
-        help="chatgpt.com, copilot.microsoft.com, duck.ai, chat.deepseek.com. Default: all",
+        metavar="NAME",
+        help="Comma-separated: chatgpt, copilot, duckai, deepseek. "
+        "all = every web site. Default: all",
     )
     parser.add_argument(
         "--via",
